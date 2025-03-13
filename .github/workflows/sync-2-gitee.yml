@@ -1,8 +1,9 @@
 name: Sync
 
-on:
-  push:
-    branches: [main, hugo]
+on:  
+  schedule:  
+    - cron: '0 */6 * * *'  # 每天同步4次（每6小时）  
+  workflow_dispatch:       # 允许手动触发
 
 jobs:
   sync-2-gitee:
