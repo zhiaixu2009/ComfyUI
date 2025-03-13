@@ -1,0 +1,21 @@
+name: Mirror to Gitee  
+on:  
+  schedule:  
+    - cron: '0 */6 * * *'  # 每天同步4次（每6小时）  
+  workflow_dispatch:       # 允许手动触发  
+
+jobs:  
+  mirror:  
+    runs-on: ubuntu-latest  
+    steps:  
+      - name: Checkout code  
+        uses: actions/checkout@v4  
+        with:  
+          fetch-depth: 0  # 获取完整历史记录  
+
+      - name: Push to Gitee  
+        run: |  
+          git remote add gitee https://gitee.com:${{ secrets.GITEE_USER }}/ComfyUI.git  
+          git push gitee HEAD:main --force  
+        env:  
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
