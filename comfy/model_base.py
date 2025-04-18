@@ -37,6 +37,7 @@ import comfy.ldm.cosmos.model
 import comfy.ldm.lumina.model
 import comfy.ldm.wan.model
 import comfy.ldm.hunyuan3d.model
+import comfy.ldm.hidream.model
 
 import comfy.model_management
 import comfy.patcher_extension
@@ -992,31 +993,41 @@ class WAN21(BaseModel):
 
     def concat_cond(self, **kwargs):
         noise = kwargs.get("noise", None)
-        if self.diffusion_model.patch_embedding.weight.shape[1] == noise.shape[1]:
+        extra_channels = self.diffusion_model.patch_embedding.weight.shape[1] - noise.shape[1]
+        if extra_channels == 0:
             return None
 
         image = kwargs.get("concat_latent_image", None)
         device = kwargs["device"]
 
         if image is None:
-            image = torch.zeros_like(noise)
+            shape_image = list(noise.shape)
+            shape_image[1] = extra_channels
+            image = torch.zeros(shape_image, dtype=noise.dtype, layout=noise.layout, device=noise.device)
+        else:
+            image = utils.common_upscale(image.to(device), noise.shape[-1], noise.shape[-2], "bilinear", "center")
+            for i in range(0, image.shape[1], 16):
+                image[:, i: i + 16] = self.process_latent_in(image[:, i: i + 16])
+            image = utils.resize_to_batch_size(image, noise.shape[0])
 
-        image = utils.common_upscale(image.to(device), noise.shape[-1], noise.shape[-2], "bilinear", "center")
-        image = self.process_latent_in(image)
-        image = utils.resize_to_batch_size(image, noise.shape[0])
-
-        if not self.image_to_video:
+        if not self.image_to_video or extra_channels == image.shape[1]:
             return image
+
+        if image.shape[1] > (extra_channels - 4):
+            image = image[:, :(extra_channels - 4)]
 
         mask = kwargs.get("concat_mask", kwargs.get("denoise_mask", None))
         if mask is None:
             mask = torch.zeros_like(noise)[:, :4]
         else:
-            mask = 1.0 - torch.mean(mask, dim=1, keepdim=True)
+            if mask.shape[1] != 4:
+                mask = torch.mean(mask, dim=1, keepdim=True)
+            mask = 1.0 - mask
             mask = utils.common_upscale(mask.to(device), noise.shape[-1], noise.shape[-2], "bilinear", "center")
             if mask.shape[-3] < noise.shape[-3]:
                 mask = torch.nn.functional.pad(mask, (0, 0, 0, 0, 0, noise.shape[-3] - mask.shape[-3]), mode='constant', value=0)
-            mask = mask.repeat(1, 4, 1, 1, 1)
+            if mask.shape[1] == 1:
+                mask = mask.repeat(1, 4, 1, 1, 1)
             mask = utils.resize_to_batch_size(mask, noise.shape[0])
 
         return torch.cat((mask, image), dim=1)
@@ -1045,4 +1056,21 @@ class Hunyuan3Dv2(BaseModel):
         guidance = kwargs.get("guidance", 5.0)
         if guidance is not None:
             out['guidance'] = comfy.conds.CONDRegular(torch.FloatTensor([guidance]))
+        return out
+
+class HiDream(BaseModel):
+    def __init__(self, model_config, model_type=ModelType.FLOW, device=None):
+        super().__init__(model_config, model_type, device=device, unet_model=comfy.ldm.hidream.model.HiDreamImageTransformer2DModel)
+
+    def encode_adm(self, **kwargs):
+        return kwargs["pooled_output"]
+
+    def extra_conds(self, **kwargs):
+        out = super().extra_conds(**kwargs)
+        cross_attn = kwargs.get("cross_attn", None)
+        if cross_attn is not None:
+            out['c_crossattn'] = comfy.conds.CONDRegular(cross_attn)
+        conditioning_llama3 = kwargs.get("conditioning_llama3", None)
+        if conditioning_llama3 is not None:
+            out['encoder_hidden_states_llama3'] = comfy.conds.CONDRegular(conditioning_llama3)
         return out
