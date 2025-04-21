@@ -1,12 +1,12 @@
 comfyui-frontend-package==1.16.8
 comfyui-workflow-templates==0.1.1
-torch
+torch==2.4.0
 torchsde
-torchvision
-torchaudio
+torchvision==0.19.0
+torchaudio==2.4.0
 numpy>=1.25.0
 einops
-transformers>=4.28.1
+transformers>=4.48.3
 tokenizers>=0.13.3
 sentencepiece
 safetensors>=0.4.2
