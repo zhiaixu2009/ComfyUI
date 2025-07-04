@@ -1,0 +1,41 @@
+name: Sync Master Branch to Gitee
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每天同步4次（每6小时）
+  workflow_dispatch:       # 允许手动触发
+
+jobs:
+  sync-master-to-gitee:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 检出 GitHub 仓库代码
+      # 使用 actions/checkout 来获取你的代码
+      # fetch-depth: 0 表示获取所有历史记录，这对于推送是必需的
+      - name: Checkout Source Repo
+        uses: actions/checkout@v4
+        with:
+          # 注意替换为你的 GitHub 源仓库地址
+          repository: zhiaixu2009/ComfyUI
+          fetch-depth: 0
+
+      # 2. 执行推送命令到 Gitee
+      # 使用一个简单的 run 步骤来执行 git 命令
+      - name: Push to Gitee
+        env:
+          # 注意在 Settings->Secrets 配置 GITEE_COMFY_SERVER_RSA_PRIVATE_KEY
+          SSH_PRIVATE_KEY: ${{ secrets.GITEE_COMFY_SERVER_RSA_PRIVATE_KEY }}
+        run: |
+          # 配置 SSH Key
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+
+          # 添加 Gitee 仓库作为远程目标，并强制推送 master 分支
+          # 注意替换为你的 Gitee 目标仓库地址
+          git remote add gitee git@gitee.com:arc-ins/tsy-ComfyUI-server.git
+          
+          # 强制推送到 Gitee 的 master 分支，不会影响其他分支
+          # master:master 表示将本地的 master 分支推送到远程的 master 分支
+          git push gitee master:master --force
